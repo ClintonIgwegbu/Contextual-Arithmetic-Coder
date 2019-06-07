@@ -1,144 +1,36 @@
+""" Provide the functions necessary to create an arithmetic encoder for a text
+file with a model that blends contexts of different lengths. 
+
+Functions
+---------
+
+encode(x): generates arithmetic code of text file, x.
+
+decode(y): reconstructs a text file from encoded data, y.
+
+get_prob(seen_contexts, max_context): updates the probability distribution for
+                                      each symbol.
+                                      
+init_context_history(): initialised record of the number of occurrences of a
+                        symbol within each context.
+                    
+drop_to_sub_context(context): takes argument string, context, and returns the
+                sub-context i.e. the first character of the string is removed.
+                
+update_history(x, seen_contexts, max_context, freq_count, max_order=2):
+    receives a new letter, x, and adds 1 to the number of 'sightings' of this
+    character in the particular context it was found in. 
+"""
+
+
 from math import floor, ceil
 from bisect import bisect
 from vl_codes import *
 
 
-def init_context_history():
-    """ Create contextual history data structure allowing a maximum order of 3. """
-    ord0 = {}
-    ord1 = {}
-    ord2 = {}
-    ord3 = {}
-    seen_contexts = [ord0, ord1, ord2, ord3]
-
-    return seen_contexts
-
-
-def drop_to_sub_context(context):
-    order = len(context)
-    if order == 0:
-        pass
-    elif order == 1:
-        context = ""
-    else:  # order >= 2
-        context = context[1:]
-
-    return context
-
-
-def get_prob(seen_contexts, max_context):  # max_order=3):
-    """ Update probability distribution. """
-    P = [0.0] * 256
-    F = [0.0] * 257
-    k = 0
-
-    alphabet = [chr(i) for i in range(256)]
-
-    for symbol in alphabet:
-        p = 1  # initialise prob. of next symbol to 1
-        context = max_context
-        order = len(context)
-        excluded = []  # list of excluded characters
-
-        # iterate through orders decreasingly to GET PROBABILITY
-        while order >= -1:
-
-            exclude_count = 0  # total count of excluded characters appearances within context
-
-            if order == -1:
-                C = 256 - len(excluded)
-                p *= 1/C
-                break
-
-            if context in seen_contexts[order]:  # if context seen already
-                for character in excluded:
-                    exclude_count += seen_contexts[order][context].get(character, 0)
-
-                C = seen_contexts[order][context]['total'] - exclude_count # get post-exclusion context count
-                assert C >= 0, 'C is negative'
-
-                if not(symbol in seen_contexts[order][context]):  # character is new to context
-                    e = 1 / (C + 1)  # calculate escape sequence code space
-                    p *= e  # update probability
-                    assert p != 0, "0 probability"
-
-                    for character in seen_contexts[order][context]:  # update list of excluded characters
-                        if not(character in excluded) and (character != 'total'):
-                            excluded.append(character)  # append character to list of excluded letters
-
-                    context = drop_to_sub_context(context)
-
-                else:  # if CHARACTER SEEN ALREADY
-                    c = seen_contexts[order][context][symbol]  # get contextual character count
-                    e = 1 / (C + 1)  # calculate escape sequence code space
-                    code_space = c / C * (1 - e)  # calculate code space for character in given order
-                    p *= code_space  # update probability
-                    assert p != 0, "0 probability"
-                    break  # stop decreasing order
-
-            else:  # CONTEXT NOT SEEN YET
-                context = drop_to_sub_context(context)
-
-            order -= 1
-
-        P[k] = p
-        F[k + 1] = F[k] + p
-        k += 1
-
-    F.pop()
-    return P, F
-
-
-def update_history(x, seen_contexts, max_context, freq_count, max_order=2):
-    """ Update context considered and contextual history. """
-    context = max_context
-    order = len(context)
-
-    while order >= -1:  # iterate downwards through orders
-        if order == -1:
-            seen_contexts[0][""][x] = 1  # character has now been seen so include it in order 0
-            freq_count += 1
-            break
-
-        if context in seen_contexts[order]:  # CONTEXT PREVIOUSLY SEEN
-            if not(x in seen_contexts[order][context]):  # NEW CHARACTER SEEN (within context)
-                seen_contexts[order][context][x] = 1  # add letter to context dictionary
-                seen_contexts[order][context]['total'] += 1  # increment context count
-                freq_count += 1
-
-                context = drop_to_sub_context(context)
-
-            else:  # CHARACTER ALREADY SEEN (within context)
-                seen_contexts[order][context][x] += 1  # increment character's contextual freq. count
-                seen_contexts[order][context]['total'] += 1  # increment context count
-                freq_count += 1
-                break  # stop decreasing order
-
-        else:  # CONTEXT NOT SEEN YET
-            # add context to dictionary and increment character count for context
-            seen_contexts[order][context] = {}  # add item to order dict. with key context and value empty dict.
-            seen_contexts[order][context]['total'] = 1  # add key 'total' to empty dict. with value of 1
-            seen_contexts[order][context][x] = 1  # add key x to dict. with value of 1
-            freq_count += 1
-
-            context = drop_to_sub_context(context)
-        order -= 1
-
-    # UPDATE max_context string
-    if len(max_context) < max_order:
-        max_context = max_context + x  # concatenate x to the end of context string
-
-    else:
-        if max_order == 0:
-            pass
-        else:  # max_order >= 1:
-            max_context = drop_to_sub_context(max_context) + x
-
-    # print(freq_count)
-    return max_context, freq_count
-
-
 def encode(x):
+    """Generate an arithmetic code of a text file, x."""
+    
     precision = 32
     one = int(2**precision - 1)
     quarter = int(ceil(one / 4))
@@ -212,6 +104,8 @@ def encode(x):
 
 
 def decode(y):
+    """Reconstruct a text file from its arithmetic code, y."""
+    
     precision = 32
     one = int(2 ** precision - 1)
     quarter = int(ceil(one / 4))
@@ -277,5 +171,143 @@ def decode(y):
 
     return x
 
+
+def get_prob(seen_contexts, max_context):  # max_order=3):
+    """ Update probability distribution. """
+    P = [0.0] * 256
+    F = [0.0] * 257
+    k = 0
+
+    alphabet = [chr(i) for i in range(256)]
+
+    for symbol in alphabet:
+        p = 1  # initialise prob. of next symbol to 1
+        context = max_context
+        order = len(context)
+        excluded = []  # list of excluded characters
+
+        # iterate through orders decreasingly to GET PROBABILITY
+        while order >= -1:
+
+            exclude_count = 0  # total count of excluded characters appearances within context
+
+            if order == -1:
+                C = 256 - len(excluded)
+                p *= 1/C
+                break
+
+            if context in seen_contexts[order]:  # if context seen already
+                for character in excluded:
+                    exclude_count += seen_contexts[order][context].get(character, 0)
+
+                C = seen_contexts[order][context]['total'] - exclude_count # get post-exclusion context count
+                assert C >= 0, 'C is negative'
+
+                if not(symbol in seen_contexts[order][context]):  # character is new to context
+                    e = 1 / (C + 1)  # calculate escape sequence code space
+                    p *= e  # update probability
+                    assert p != 0, "0 probability"
+
+                    for character in seen_contexts[order][context]:  # update list of excluded characters
+                        if not(character in excluded) and (character != 'total'):
+                            excluded.append(character)  # append character to list of excluded letters
+
+                    context = drop_to_sub_context(context)
+
+                else:  # if CHARACTER SEEN ALREADY
+                    c = seen_contexts[order][context][symbol]  # get contextual character count
+                    e = 1 / (C + 1)  # calculate escape sequence code space
+                    code_space = c / C * (1 - e)  # calculate code space for character in given order
+                    p *= code_space  # update probability
+                    assert p != 0, "0 probability"
+                    break  # stop decreasing order
+
+            else:  # CONTEXT NOT SEEN YET
+                context = drop_to_sub_context(context)
+
+            order -= 1
+
+        P[k] = p
+        F[k + 1] = F[k] + p
+        k += 1
+
+    F.pop()
+    return P, F
+
+
+def init_context_history():
+    """Create contextual history data structure allowing a maximum order of 3."""
+    
+    ord0 = {}
+    ord1 = {}
+    ord2 = {}
+    ord3 = {}
+    seen_contexts = [ord0, ord1, ord2, ord3]
+
+    return seen_contexts
+
+
+def drop_to_sub_context(context):
+    """Return the sub-context of the context provided."""
+    
+    order = len(context)
+    if order == 0:
+        pass
+    elif order == 1:
+        context = ""
+    else:  # order >= 2
+        context = context[1:]
+
+    return context
+
+
+def update_history(x, seen_contexts, max_context, freq_count, max_order=2):
+    """ Update context considered and contextual history. """
+    
+    context = max_context
+    order = len(context)
+
+    while order >= -1:  # iterate downwards through orders
+        if order == -1:
+            seen_contexts[0][""][x] = 1  # character has now been seen so include it in order 0
+            freq_count += 1
+            break
+
+        if context in seen_contexts[order]:  # CONTEXT PREVIOUSLY SEEN
+            if not(x in seen_contexts[order][context]):  # NEW CHARACTER SEEN (within context)
+                seen_contexts[order][context][x] = 1  # add letter to context dictionary
+                seen_contexts[order][context]['total'] += 1  # increment context count
+                freq_count += 1
+
+                context = drop_to_sub_context(context)
+
+            else:  # CHARACTER ALREADY SEEN (within context)
+                seen_contexts[order][context][x] += 1  # increment character's contextual freq. count
+                seen_contexts[order][context]['total'] += 1  # increment context count
+                freq_count += 1
+                break  # stop decreasing order
+
+        else:  # CONTEXT NOT SEEN YET
+            # add context to dictionary and increment character count for context
+            seen_contexts[order][context] = {}  # add item to order dict. with key context and value empty dict.
+            seen_contexts[order][context]['total'] = 1  # add key 'total' to empty dict. with value of 1
+            seen_contexts[order][context][x] = 1  # add key x to dict. with value of 1
+            freq_count += 1
+
+            context = drop_to_sub_context(context)
+        order -= 1
+
+    # UPDATE max_context string
+    if len(max_context) < max_order:
+        max_context = max_context + x  # concatenate x to the end of context string
+
+    else:
+        if max_order == 0:
+            pass
+        else:  # max_order >= 1:
+            max_context = drop_to_sub_context(max_context) + x
+
+    # print(freq_count)
+    return max_context, freq_count
 
 
